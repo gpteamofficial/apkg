@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# APKG Maintenance Script - GP Team
-# Performs update / reinstall / repair / delete for APKG binary.
+# APKG Installer + Maintenance - GP Team
+# Installs APKG and provides Repair / Reinstall / Delete / Delete+Backup / Update menu.
 
 set -euo pipefail
 
@@ -8,20 +8,23 @@ APKG_URL="https://raw.githubusercontent.com/gpteamofficial/apkg/main/apkg.sh"
 APKG_DEST="/bin/apkg"
 APKG_BAK="/bin/apkg.bak"
 
+PKG_MGR=""
+PKG_FAMILY=""
+
 # ------------------ helpers ------------------
 
 log() {
-  printf '[apkg-maint] %s\n' "$*" >&2
+  printf '[apkg-installer] %s\n' "$*" >&2
 }
 
 fail() {
-  printf '[apkg-maint][ERROR] %s\n' "$*" >&2
+  printf '[apkg-installer][ERROR] %s\n' "$*" >&2
   exit 1
 }
 
 require_root() {
   if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-    fail "This script must be run as root. Try: sudo $0 $*"
+    fail "This script must be run as root. Try: sudo $0"
   fi
 }
 
@@ -131,15 +134,43 @@ install_apkg() {
   log "APKG installed successfully at: ${APKG_DEST}"
 }
 
+print_summary() {
+  cat <<EOF
+
+APKG installation completed.
+
+Binary location:
+  ${APKG_DEST}
+
+Basic usage:
+  apkg help
+  apkg update
+  apkg full-upgrade
+  apkg install <package>
+  apkg remove <package>
+
+APKG is a unified package manager interface by GP Team.
+EOF
+}
+
 # ------------------ operations ------------------
+
+op_install() {
+  log "Starting APKG fresh installation ..."
+  install_curl_if_needed
+  tmpfile="$(download_apkg)"
+  install_apkg "${tmpfile}"
+  print_summary
+}
 
 op_update() {
   if [ ! -f "${APKG_DEST}" ]; then
     log "APKG not found at ${APKG_DEST}. Performing fresh install instead of update."
-  else
-    log "Updating existing APKG at ${APKG_DEST} ..."
+    op_install
+    return
   fi
 
+  log "Updating existing APKG at ${APKG_DEST} ..."
   install_curl_if_needed
   tmpfile="$(download_apkg)"
   install_apkg "${tmpfile}"
@@ -180,7 +211,7 @@ op_repair() {
     chmod 0755 "${APKG_DEST}" || needs_fix=1
   fi
 
-  # optional: simple integrity check (is it a shell script?)
+  # simple integrity check (is it a shell script?)
   if [ -f "${APKG_DEST}" ] && ! head -n1 "${APKG_DEST}" | grep -q "bash"; then
     log "APKG binary does not look like a shell script. Replacing..."
     needs_fix=1
@@ -207,62 +238,115 @@ op_delete() {
     log "APKG not found at ${APKG_DEST}. Nothing to delete."
   fi
 
-  # keep backup if exists; user can delete manually
-  if [ -f "${APKG_BAK}" ]; then
-    log "Backup still present at ${APKG_BAK} (not removed)."
-  fi
-
-  log "Delete operation completed."
+  log "Delete operation completed (backup kept at ${APKG_BAK} if exists)."
 }
 
-print_usage() {
+op_delete_all() {
+  log "Deleting APKG and backup ..."
+
+  if [ -f "${APKG_DEST}" ]; then
+    rm -f "${APKG_DEST}"
+    log "Removed ${APKG_DEST}"
+  else
+    log "APKG not found at ${APKG_DEST}."
+  fi
+
+  if [ -f "${APKG_BAK}" ]; then
+    rm -f "${APKG_BAK}"
+    log "Removed backup ${APKG_BAK}"
+  else
+    log "No backup file ${APKG_BAK} found."
+  fi
+
+  log "Delete + backup operation completed."
+}
+
+# ------------------ menu ------------------
+
+show_menu() {
   cat <<EOF
-APKG Maintenance Script
+Choose What You Want To Do:
 
-Usage:
-  $0 update      - Download and update APKG binary (or install if missing)
-  $0 reinstall   - Remove existing APKG and reinstall from scratch
-  $0 repair      - Try to repair APKG (re-download if corrupted/missing)
-  $0 delete      - Remove APKG binary from the system
-  $0 help        - Show this help
+1) Repair
+2) Reinstall 
+3) Delete
+4) Delete and delete backup
+5) Update
 
-Note: Must be run as root (use sudo).
+0) Exit
+[INPUT] ->:
 EOF
 }
 
 # ------------------ main ------------------
 
 main() {
-  if [ "$#" -lt 1 ]; then
-    print_usage
-    exit 1
+  require_root
+
+  # subcommands support
+  if [ "$#" -ge 1 ]; then
+    cmd="$1"
+    shift || true
+    case "${cmd}" in
+      install)
+        op_install
+        exit 0
+        ;;
+      update)
+        op_update
+        exit 0
+        ;;
+      reinstall)
+        op_reinstall
+        exit 0
+        ;;
+      repair)
+        op_repair
+        exit 0
+        ;;
+      delete|remove|uninstall)
+        op_delete
+        exit 0
+        ;;
+      delete-all|delete_all)
+        op_delete_all
+        exit 0
+        ;;
+      menu)
+        # fall through to interactive menu
+        ;;
+      *)
+        fail "Unknown command '${cmd}'. Use: install | update | reinstall | repair | delete | delete-all | menu"
+        ;;
+    esac
   fi
 
-  local cmd="$1"
-  shift || true
+  # interactive menu (default behavior)
+  show_menu
+  read -r choice
 
-  case "${cmd}" in
-    update)
-      require_root
-      op_update
-      ;;
-    reinstall)
-      require_root
-      op_reinstall
-      ;;
-    repair)
-      require_root
+  case "${choice}" in
+    1)
       op_repair
       ;;
-    delete|remove|uninstall)
-      require_root
+    2)
+      op_reinstall
+      ;;
+    3)
       op_delete
       ;;
-    help|-h|--help)
-      print_usage
+    4)
+      op_delete_all
+      ;;
+    5)
+      op_update
+      ;;
+    0)
+      log "Exiting..."
+      exit 0
       ;;
     *)
-      fail "Unknown command '${cmd}'. Use: update | reinstall | repair | delete | help"
+      fail "Invalid choice '${choice}'. Please run again and choose between 0-5."
       ;;
   esac
 }
