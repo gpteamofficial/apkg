@@ -52,6 +52,15 @@ fail() {
   exit 1
 }
 
+# عمليات ملوّنة مُخصصة
+log_install() {
+  printf '%s[apkg-installer][INSTALL]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
+}
+
+log_delete_msg() {
+  printf '%s[apkg-installer][DELETE]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
+}
+
 usage() {
   printf 'Usage: %s [OPTIONS] [COMMAND]\n' "$0"
   printf '\nOptions:\n'
@@ -176,7 +185,7 @@ install_curl_if_needed() {
     *)
       fail "Unsupported package manager family '${PKG_FAMILY}' for installing curl."
       ;;
-  esac
+  esac"
 
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     fail "Failed to install curl. Please install curl or wget manually, then rerun."
@@ -217,18 +226,18 @@ download_apkg() {
 install_apkg() {
   src=$1
 
-  log "Installing APKG to ${APKG_DEST} ..."
+  log_install "Installing APKG to ${APKG_DEST} ..."
   mkdir -p "$(dirname "$APKG_DEST")"
 
   if [ -f "$APKG_DEST" ]; then
-    log "Backing up existing APKG to ${APKG_BAK}"
+    log_install "Backing up existing APKG to ${APKG_BAK}"
     cp -f "$APKG_DEST" "$APKG_BAK" || true
   fi
 
   mv "$src" "$APKG_DEST"
   chmod 0755 "$APKG_DEST"
 
-  ok "APKG installed successfully at: ${APKG_DEST}"
+  log_install "APKG installed successfully at: ${APKG_DEST}"
 }
 
 print_summary() {
@@ -244,7 +253,6 @@ print_summary() {
 }
 
 install_yay_arch() {
-  # Only for Arch-like systems with pacman
   if ! command -v pacman >/dev/null 2>&1; then
     return 0
   fi
@@ -254,7 +262,7 @@ install_yay_arch() {
     return 0
   fi
 
-  log "Preparing temporary AUR build user 'aurbuild' to install yay..."
+  log_install "Preparing temporary AUR build user 'aurbuild' to install yay..."
 
   if id -u aurbuild >/dev/null 2>&1; then
     warn "User 'aurbuild' already exists; will reuse it and NOT remove it afterwards."
@@ -265,10 +273,10 @@ install_yay_arch() {
     ok "Temporary user 'aurbuild' created."
   fi
 
-  log "Ensuring base-devel and git are installed via pacman..."
+  log_install "Ensuring base-devel and git are installed via pacman..."
   pacman -Sy --needed --noconfirm base-devel git
 
-  log "Switching to 'aurbuild' to build and install yay from AUR..."
+  log_install "Switching to 'aurbuild' to build and install yay from AUR..."
   su - aurbuild -c '
     set -eu
     workdir=$(mktemp -d /tmp/yay.XXXXXX)
@@ -281,7 +289,7 @@ install_yay_arch() {
   ok "yay has been installed."
 
   if [ "$AUR_USER_CREATED" -eq 1 ]; then
-    log "Cleaning up temporary user 'aurbuild' and its home directory..."
+    log_install "Cleaning up temporary user 'aurbuild' and its home directory..."
     if userdel -r aurbuild 2>/dev/null; then
       ok "Temporary user 'aurbuild' removed."
     else
@@ -297,7 +305,7 @@ install_yay_arch() {
 # ------------------ operations ------------------
 
 op_install() {
-  log "Starting APKG fresh installation ..."
+  log_install "Starting APKG fresh installation ..."
   install_curl_if_needed
   if [ "$PKG_FAMILY" = "arch" ]; then
     install_yay_arch
@@ -309,26 +317,26 @@ op_install() {
 
 op_update() {
   if [ ! -f "$APKG_DEST" ]; then
-    log "APKG not found at ${APKG_DEST}. Performing fresh install instead of update."
+    log_install "APKG not found at ${APKG_DEST}. Performing fresh install instead of update."
     op_install
     return
   fi
 
-  log "Updating existing APKG at ${APKG_DEST} ..."
+  log_install "Updating existing APKG at ${APKG_DEST} ..."
   install_curl_if_needed
   if [ "$PKG_FAMILY" = "arch" ]; then
     install_yay_arch
   fi
   tmpfile="$(download_apkg)"
   install_apkg "$tmpfile"
-  log "Update completed."
+  log_install "Update completed."
 }
 
 op_reinstall() {
-  log "Reinstalling APKG ..."
+  log_install "Reinstalling APKG ..."
 
   if [ -f "$APKG_DEST" ]; then
-    log "Removing existing APKG at ${APKG_DEST}"
+    log_install "Removing existing APKG at ${APKG_DEST}"
     rm -f "$APKG_DEST"
   fi
 
@@ -338,7 +346,7 @@ op_reinstall() {
   fi
   tmpfile="$(download_apkg)"
   install_apkg "$tmpfile"
-  log "Reinstall completed."
+  log_install "Reinstall completed."
 }
 
 op_repair() {
@@ -369,7 +377,7 @@ op_repair() {
   fi
 
   if [ "$needs_fix" -eq 1 ]; then
-    log "Re-downloading APKG to repair installation..."
+    log_install "Re-downloading APKG to repair installation..."
     if [ "$PKG_FAMILY" = "arch" ]; then
       install_yay_arch
     fi
@@ -383,36 +391,36 @@ op_repair() {
 }
 
 op_delete() {
-  log "Deleting APKG ..."
+  log_delete_msg "Deleting APKG ..."
 
   if [ -f "$APKG_DEST" ]; then
+    log_delete_msg "Removing ${APKG_DEST}"
     rm -f "$APKG_DEST"
-    log "Removed ${APKG_DEST}"
   else
-    log "APKG not found at ${APKG_DEST}. Nothing to delete."
+    log_delete_msg "APKG not found at ${APKG_DEST}. Nothing to delete."
   fi
 
-  log "Delete operation completed (backup kept at ${APKG_BAK} if exists)."
+  log_delete_msg "Delete operation completed (backup kept at ${APKG_BAK} if exists)."
 }
 
 op_delete_all() {
-  log "Deleting APKG and backup ..."
+  log_delete_msg "Deleting APKG and backup ..."
 
   if [ -f "$APKG_DEST" ]; then
+    log_delete_msg "Removing ${APKG_DEST}"
     rm -f "$APKG_DEST"
-    log "Removed ${APKG_DEST}"
   else
-    log "APKG not found at ${APKG_DEST}."
+    log_delete_msg "APKG not found at ${APKG_DEST}."
   fi
 
   if [ -f "$APKG_BAK" ]; then
+    log_delete_msg "Removing backup ${APKG_BAK}"
     rm -f "$APKG_BAK"
-    log "Removed backup ${APKG_BAK}"
   else
-    log "No backup file ${APKG_BAK} found."
+    log_delete_msg "No backup file ${APKG_BAK} found."
   fi
 
-  log "Delete + backup operation completed."
+  log_delete_msg "Delete + backup operation completed."
 }
 
 # ------------------ menu ------------------
