@@ -52,7 +52,6 @@ fail() {
   exit 1
 }
 
-# عمليات ملوّنة مُخصصة
 log_install() {
   printf '%s[apkg-installer][INSTALL]%s %s\n' "$C_OK" "$C_RESET" "$*" >&2
 }
@@ -111,7 +110,6 @@ detect_pkg_mgr() {
 }
 
 ask_confirmation() {
-  # $1 = message, $2 = default (Y/N, optional, default N)
   msg=$1
   default=${2:-N}
 
@@ -185,7 +183,7 @@ install_curl_if_needed() {
     *)
       fail "Unsupported package manager family '${PKG_FAMILY}' for installing curl."
       ;;
-  esac"
+  esac
 
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     fail "Failed to install curl. Please install curl or wget manually, then rerun."
@@ -566,7 +564,6 @@ main() {
     exit 0
   fi
 
-  # interactive menu (default behavior)
   show_menu
 
   if [ -t 0 ]; then
