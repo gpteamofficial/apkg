@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
-# apkg - unified package manager frontend
+# apkg - unified package manager frontend (hardened)
 # Supports: apt/apt-get, pacman(+yay/AUR), dnf, yum, zypper, apk (Alpine),
 #           xbps (Void), emerge (Gentoo)
+# NOTE: This script is intentionally conservative for safety.
 
 set -euo pipefail
 
-APKG_VERSION="0.4.0"
+APKG_VERSION="0.5.0"
 
 # ------------- logging helpers -------------
 
-log()  { printf '[APKG] %s\n' "$*" >&2; }
-warn() { printf '[APKG][WARN] %s\n' "$*" >&2; }
-die()  { printf '[APKG][ERROR] %s\n' "$*" >&2; exit 1; }
+# Colors
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+RESET='\033[0m'
+
+log()  { printf "${BOLD}[APKG]${RESET} ${GREEN}[INF]${RESET} %s\n" "$*" >&2; }
+warn() { printf "${BOLD}[APKG]${RESET} ${YELLOW}[WARN]${RESET} %s\n" "$*" >&2; }
+die()  { printf "${BOLD}[APKG]${RESET} ${RED}[ERROR]${RESET} %s\n" "$*" >&2; exit 1; }
 
 # ------------- global flags -------------
 
-# 0 = normal, 1 = assume yes for all confirmations
 APKG_ASSUME_YES=0
+APKG_ARGS=()
 
-# remove -y/--yes from args and set APKG_ASSUME_YES=1
 parse_global_flags() {
   APKG_ARGS=()
   for arg in "$@"; do
@@ -86,6 +93,24 @@ PKG_MGR=""
 PKG_MGR_FAMILY=""   # debian, arch, redhat, suse, alpine, void, gentoo
 
 detect_pkg_mgr() {
+  # Arch detection with safety
+  if [[ -f /etc/arch-release ]]; then
+    if command -v pacman >/dev/null 2>&1; then
+      PKG_MGR="pacman"
+      PKG_MGR_FAMILY="arch"
+      return
+    else
+      warn "Arch-based system detected (/etc/arch-release present) but 'pacman' is not in PATH."
+      warn "This usually means the system is severely broken or is a minimal container image."
+      if apkg_confirm "pacman not found, attempt to continue WITHOUT package manager?"; then
+        die "Cannot safely install pacman automatically. Please repair/install pacman manually, then rerun apkg."
+      else
+        die "Cannot manage packages on Arch without pacman."
+      fi
+    fi
+  fi
+
+  # Normal detection order
   if command -v pacman >/dev/null 2>&1; then
     PKG_MGR="pacman"
     PKG_MGR_FAMILY="arch"
@@ -110,8 +135,14 @@ detect_pkg_mgr() {
   elif command -v emerge >/dev/null 2>&1; then
     PKG_MGR="emerge"
     PKG_MGR_FAMILY="gentoo"
+  # Debian-like minimal system without apt (dpkg only)
+  elif [[ -f /etc/debian_version ]] && command -v dpkg >/dev/null 2>&1; then
+    PKG_MGR="dpkg"
+    PKG_MGR_FAMILY="debian_dpkg"
+    warn "Debian-based system detected but no apt/apt-get found."
+    warn "apkg will offer limited functionality using dpkg only (no repo installs)."
   else
-    die "No supported package manager found (pacman/apt-get/dnf/yum/zypper/apk/xbps/emerge)."
+    die "No supported package manager found (pacman/apt-get/dnf/yum/zypper/apk/xbps/emerge/dpkg)."
   fi
 }
 
@@ -122,62 +153,58 @@ ensure_pkg_mgr() {
 }
 
 usage() {
+  BOLD='\033[1m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[0;33m'
+  BLUE='\033[0;34m'
+  RED='\033[0;31m'
+  RESET='\033[0m'
+
   cat <<EOF
-apkg - unified package manager frontend
+${BOLD}${BLUE}[APKG]${RESET} Unified Package Manager Frontend
 
-Usage: apkg [global options] <command> [arguments...]
+${BOLD}Usage:${RESET} ${GREEN}apkg [options] <command> [args]${RESET}
 
-Global options:
-  -y, --yes              Assume 'yes' for all confirmations
-  (or set APKG_ASSUME_YES=1 in the environment)
+${BOLD}Global options:${RESET}
+  ${YELLOW}-y, --yes${RESET}       Assume yes (or set ${YELLOW}APKG_ASSUME_YES=1${RESET})
 
-Core commands (mapped per distro):
+${BOLD}Core commands:${RESET}
+  ${GREEN}update${RESET}            Update package database
+  ${GREEN}upgrade${RESET}           Upgrade packages
+  ${GREEN}full-upgrade${RESET}      Full system upgrade
+  ${GREEN}install PKG...${RESET}    Install package(s)
+  ${GREEN}remove PKG...${RESET}     Remove package(s)
+  ${GREEN}purge PKG...${RESET}      Remove packages + configs
+  ${GREEN}autoremove${RESET}        Remove orphan dependencies
+  ${GREEN}search PATTERN${RESET}    Search packages
+  ${GREEN}list${RESET}              List installed packages
+  ${GREEN}show PKG${RESET}          Show package info
+  ${GREEN}clean${RESET}             Clean cache
 
-  apkg update             Update package database
-  apkg upgrade            Upgrade installed packages (safe/normal)
-  apkg full-upgrade       Full upgrade (dist-upgrade / Syu / world)
+${BOLD}Repos:${RESET}
+  ${GREEN}repos-list${RESET}        List repos
+  ${GREEN}add-repo ARGS...${RESET}  Add repo
+  ${GREEN}remove-repo PAT${RESET}   Remove/disable repo
 
-  apkg install PKG...     Install one or more packages
-  apkg remove PKG...      Remove packages
-  apkg purge PKG...       Remove packages + configs (if supported)
-  apkg autoremove         Remove unused/orphan dependencies
+${BOLD}System & Dev:${RESET}
+  ${GREEN}install-dev-kit${RESET}   Install dev tools
+  ${GREEN}fix-dns${RESET}           Fix DNS issues
+  ${GREEN}sys-info${RESET}          System info
+  ${GREEN}kernel${RESET}            Kernel version
+  ${GREEN}disk${RESET}              Disk usage
+  ${GREEN}mem${RESET}               Memory usage
+  ${GREEN}top${RESET}               htop/top
+  ${GREEN}ps${RESET}                Top processes
+  ${GREEN}ip${RESET}                Network info
 
-  apkg search PATTERN     Search packages
-  apkg list               List installed packages
-  apkg show PKG           Show detailed package info
-  apkg clean              Clean cache (if supported)
+${BOLD}General:${RESET}
+  ${GREEN}-v | --version${RESET}    Show version
+  ${GREEN}help${RESET}              Show this help
 
-Repo management (best-effort, distro-dependent):
-
-  apkg repos-list         List configured repositories
-  apkg add-repo ARGS...   Add a repository (delegates to distro tools when possible)
-  apkg remove-repo PAT    Remove / disable repos matching PATTERN (best-effort)
-
-Dev / troubleshooting:
-
-  apkg install-dev-kit    Install basic development tools (compiler, make, git, etc.)
-  apkg fix-dns            Try to fix common DNS issues (backup /etc/resolv.conf, set public DNS)
-
-System helpers (non-package-manager):
-
-  apkg sys-info           Basic system information
-  apkg kernel             Show kernel version
-  apkg disk               Show disk usage (df -h)
-  apkg mem                Show memory usage (free -h)
-  apkg top                Run htop if available, else top
-  apkg ps                 Top 15 processes by memory
-  apkg ip                 Show network info (ip addr/route)
-
-General:
-
-  apkg -v | --version     Show apkg version
-  apkg help               Show this help
-
-Environment:
-
-  APKG_SUDO=""            Disable sudo/doas inside apkg (run as root)
-  APKG_SUDO="doas"        Use doas instead of sudo, etc.
-  APKG_ASSUME_YES=1       Assume yes for all confirmations (same as -y)
+${BOLD}Env:${RESET}
+  ${YELLOW}APKG_SUDO=""${RESET}        Disable sudo/doas
+  ${YELLOW}APKG_SUDO="doas"${RESET}    Use doas
+  ${YELLOW}APKG_ASSUME_YES=1${RESET}   Assume yes
 
 EOF
 }
@@ -190,7 +217,6 @@ print_pkg_not_found_msgs() {
   done
 }
 
-# تأكيد عام لكل العمليات الخطيرة
 apkg_confirm() {
   local msg="$1"
 
@@ -212,7 +238,6 @@ apkg_confirm() {
   esac
 }
 
-# شغّل الكوماند، اعرض اللوجات live، وارجّعها في متغير
 run_and_capture() {
   local __var="$1"; shift
   local __tmp
@@ -235,14 +260,95 @@ run_and_capture() {
   return "$__status"
 }
 
+# ------------- package existence checks (generic) -------------
+
+APKG_PRESENT_PKGS=()
+APKG_MISSING_PKGS=()
+
+redhat_pkg_exists() {
+  ${PKG_MGR} info "$1" >/dev/null 2>&1
+}
+
+suse_pkg_exists() {
+  zypper info "$1" >/dev/null 2>&1
+}
+
+alpine_pkg_exists() {
+  apk info -e "$1" >/dev/null 2>&1
+}
+
+void_pkg_exists() {
+  xbps-query -RS "$1" >/dev/null 2>&1
+}
+
+arch_pkg_exists() {
+  pacman -Si "$1" >/dev/null 2>&1
+}
+
+check_pkgs_exist_generic() {
+  local pkg
+  APKG_PRESENT_PKGS=()
+  APKG_MISSING_PKGS=()
+
+  for pkg in "$@"; do
+    case "${PKG_MGR_FAMILY}" in
+      arch)
+        if arch_pkg_exists "$pkg"; then
+          APKG_PRESENT_PKGS+=("$pkg")
+        else
+          APKG_MISSING_PKGS+=("$pkg")
+        fi
+        ;;
+      redhat)
+        if redhat_pkg_exists "$pkg"; then
+          APKG_PRESENT_PKGS+=("$pkg")
+        else
+          APKG_MISSING_PKGS+=("$pkg")
+        fi
+        ;;
+      suse)
+        if suse_pkg_exists "$pkg"; then
+          APKG_PRESENT_PKGS+=("$pkg")
+        else
+          APKG_MISSING_PKGS+=("$pkg")
+        fi
+        ;;
+      alpine)
+        if alpine_pkg_exists "$pkg"; then
+          APKG_PRESENT_PKGS+=("$pkg")
+        else
+          APKG_MISSING_PKGS+=("$pkg")
+        fi
+        ;;
+      void)
+        if void_pkg_exists "$pkg"; then
+          APKG_PRESENT_PKGS+=("$pkg")
+        else
+          APKG_MISSING_PKGS+=("$pkg")
+        fi
+        ;;
+      gentoo)
+        # For safety/simplicity we don't aggressively guess missing packages here.
+        APKG_PRESENT_PKGS+=("$pkg")
+        ;;
+      *)
+        # Fallback: assume present (handled more specifically in debian functions)
+        APKG_PRESENT_PKGS+=("$pkg")
+        ;;
+    esac
+  done
+
+  if ((${#APKG_MISSING_PKGS[@]} > 0)); then
+    print_pkg_not_found_msgs "${APKG_MISSING_PKGS[@]}"
+  fi
+}
+
 # ------------- Debian-specific helpers -------------
 
-# تصحيح بعض أسماء البكجات المشهورة على Debian/Ubuntu
 debian_fix_pkg_name() {
   local name="$1"
   case "$name" in
     docker)
-      # حالتك بالذات: docker -> docker.io
       warn "On Debian/Ubuntu, 'docker' package is usually named 'docker.io'. Using 'docker.io'."
       echo "docker.io"
       ;;
@@ -250,12 +356,8 @@ debian_fix_pkg_name() {
       warn "On Debian/Ubuntu, 'node' is usually 'nodejs'. Using 'nodejs'."
       echo "nodejs"
       ;;
-    pip)
-      warn "On Debian/Ubuntu, 'pip' is usually 'python3-pip'. Using 'python3-pip'."
-      echo "python3-pip"
-      ;;
-    python-pip)
-      warn "On Debian/Ubuntu, 'python-pip' is deprecated. Using 'python3-pip'."
+    pip|python-pip)
+      warn "On Debian/Ubuntu, pip is typically 'python3-pip'. Using 'python3-pip'."
       echo "python3-pip"
       ;;
     *)
@@ -271,7 +373,7 @@ debian_pkg_exists() {
     return 1
   fi
   if grep -q "Candidate: (none)" <<<"$out"; then
-    return 0 && false || return 1
+    return 1
   fi
   return 0
 }
@@ -282,7 +384,6 @@ debian_install_pkgs() {
   local present=()
   local missing=()
 
-  # تصحيح الأسماء أولاً
   local p fixed
   for p in "${original_pkgs[@]}"; do
     fixed="$(debian_fix_pkg_name "$p")"
@@ -292,7 +393,39 @@ debian_install_pkgs() {
     fixed_pkgs+=("$fixed")
   done
 
-  # تأكد إن البكج موجودة قبل ما تسأل Y/N
+  # إذا ما في apt/apt-get لكن في dpkg: نسمح فقط بملفات .deb محلية
+  if [[ "${PKG_MGR_FAMILY}" == "debian_dpkg" || "${PKG_MGR}" == "dpkg" ]]; then
+    local debs=()
+    for p in "${fixed_pkgs[@]}"; do
+      if [[ -f "$p" && "$p" == *.deb ]]; then
+        debs+=("$p")
+      else
+        missing+=("$p")
+      fi
+    done
+
+    if ((${#missing[@]} > 0)); then
+      warn "On dpkg-only systems apkg can only install local .deb files."
+      print_pkg_not_found_msgs "${missing[@]}"
+    fi
+
+    if ((${#debs[@]} == 0)); then
+      warn "No .deb files to install with dpkg."
+      return 1
+    fi
+
+    echo "apkg: Local .deb files to install:"
+    printf '  %s\n' "${debs[@]}"
+
+    if ! apkg_confirm "Install these .deb files via dpkg?"; then
+      return 1
+    fi
+
+    ${SUDO} dpkg -i "${debs[@]}"
+    return 0
+  fi
+
+  # apt موجود: نستخدمه بشكل عادي لكن بعد ما نتحقق من وجود البكجات
   for p in "${fixed_pkgs[@]}"; do
     if debian_pkg_exists "$p"; then
       present+=("$p")
@@ -310,7 +443,9 @@ debian_install_pkgs() {
     return 1
   fi
 
-  # تأكيد
+  echo "apkg: Packages to install (Debian/Ubuntu):"
+  printf '  %s\n' "${present[@]}"
+
   if ! apkg_confirm "Install packages: ${present[*]} ?"; then
     return 1
   fi
@@ -327,7 +462,6 @@ debian_install_pkgs() {
     fi
 
     if grep -qi 'Unable to locate package' <<<"$out"; then
-      # احتياط لو حاجة اتغيرت بعد check
       print_pkg_not_found_msgs "${present[@]}"
     else
       warn "Install failed."
@@ -383,27 +517,33 @@ arch_install_with_yay() {
   local pkgs=("$@")
   local out
 
-  # تأكيد قبل ما نبدأ
-  if ! apkg_confirm "Install packages: ${pkgs[*]} ?"; then
+  check_pkgs_exist_generic "${pkgs[@]}"
+  if ((${#APKG_PRESENT_PKGS[@]} == 0)); then
+    warn "No valid packages to install (Arch/pacman)."
     return 1
   fi
 
-  # جرّب pacman أولاً
-  if run_and_capture out ${SUDO} pacman -S --needed --noconfirm "${pkgs[@]}"; then
+  echo "apkg: Packages to install (Arch):"
+  printf '  %s\n' "${APKG_PRESENT_PKGS[@]}"
+
+  if ! apkg_confirm "Install packages: ${APKG_PRESENT_PKGS[*]} ?"; then
+    return 1
+  fi
+
+  if run_and_capture out ${SUDO} pacman -S --needed --noconfirm "${APKG_PRESENT_PKGS[@]}"; then
     return 0
   fi
 
-  # لو البكج مش موجود في الرسمي
   if grep -qiE 'target not found|could not find|no such package' <<< "$out"; then
     log "Some packages not found in official repos, trying yay (AUR)..."
 
     if install_yay_if_needed; then
       local yay_out=""
-      if run_and_capture yay_out yay -S --needed --noconfirm "${pkgs[@]}"; then
+      if run_and_capture yay_out yay -S --needed --noconfirm "${APKG_PRESENT_PKGS[@]}"; then
         return 0
       else
         if grep -qiE 'not found|could not find|no such package' <<< "$yay_out"; then
-          print_pkg_not_found_msgs "${pkgs[@]}"
+          print_pkg_not_found_msgs "${APKG_PRESENT_PKGS[@]}"
           return 1
         fi
         warn "Error while installing via yay."
@@ -411,12 +551,11 @@ arch_install_with_yay() {
       fi
     else
       warn "Could not use yay (AUR) automatically. Package may exist only in AUR."
-      print_pkg_not_found_msgs "${pkgs[@]}"
+      print_pkg_not_found_msgs "${APKG_PRESENT_PKGS[@]}"
       return 1
     fi
   fi
 
-  # أي خطأ تاني من pacman
   warn "Error while installing via pacman."
   return 1
 }
@@ -432,6 +571,9 @@ cmd_update() {
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} update
+      ;;
+    debian_dpkg)
+      warn "No apt found; cannot update repo metadata on dpkg-only systems."
       ;;
     arch)
       ${SUDO} pacman -Sy --noconfirm
@@ -464,6 +606,9 @@ cmd_upgrade() {
     debian)
       ${SUDO} ${PKG_MGR} upgrade -y
       ;;
+    debian_dpkg)
+      warn "dpkg-only mode: full upgrade via repos is not possible (no apt)."
+      ;;
     arch)
       ${SUDO} pacman -Su --noconfirm
       ;;
@@ -495,6 +640,9 @@ cmd_full_upgrade() {
     debian)
       ${SUDO} ${PKG_MGR} dist-upgrade -y
       ;;
+    debian_dpkg)
+      warn "dpkg-only mode: full upgrade via repos is not possible (no apt)."
+      ;;
     arch)
       ${SUDO} pacman -Syu --noconfirm
       ;;
@@ -524,7 +672,7 @@ cmd_install() {
   fi
 
   case "${PKG_MGR_FAMILY}" in
-    debian)
+    debian|debian_dpkg)
       debian_install_pkgs "$@"
       ;;
 
@@ -533,15 +681,22 @@ cmd_install() {
       ;;
 
     redhat)
-      if ! apkg_confirm "Install packages: $* ?"; then
+      check_pkgs_exist_generic "$@"
+      if ((${#APKG_PRESENT_PKGS[@]} == 0)); then
+        warn "No valid packages to install (RedHat family)."
+        return 1
+      fi
+      echo "apkg: Packages to install (RedHat):"
+      printf '  %s\n' "${APKG_PRESENT_PKGS[@]}"
+      if ! apkg_confirm "Install packages: ${APKG_PRESENT_PKGS[*]} ?"; then
         return 1
       fi
       local out=""
-      if run_and_capture out ${SUDO} ${PKG_MGR} install -y "$@"; then
+      if run_and_capture out ${SUDO} ${PKG_MGR} install -y "${APKG_PRESENT_PKGS[@]}"; then
         return 0
       else
         if grep -qiE 'No match for argument|Unable to find a match' <<< "$out"; then
-          print_pkg_not_found_msgs "$@"
+          print_pkg_not_found_msgs "${APKG_PRESENT_PKGS[@]}"
         else
           warn "Install failed."
         fi
@@ -550,15 +705,22 @@ cmd_install() {
       ;;
 
     suse)
-      if ! apkg_confirm "Install packages: $* ?"; then
+      check_pkgs_exist_generic "$@"
+      if ((${#APKG_PRESENT_PKGS[@]} == 0)); then
+        warn "No valid packages to install (SUSE)."
         return 1
       fi
-      local out=""
-      if run_and_capture out ${SUDO} zypper install -y "$@"; then
+      echo "apkg: Packages to install (SUSE):"
+      printf '  %s\n' "${APKG_PRESENT_PKGS[@]}"
+      if ! apkg_confirm "Install packages: ${APKG_PRESENT_PKGS[*]} ?"; then
+        return 1
+      fi
+      local out_s=""
+      if run_and_capture out_s ${SUDO} zypper install -y "${APKG_PRESENT_PKGS[@]}"; then
         return 0
       else
-        if grep -qi 'not found in package names' <<< "$out"; then
-          print_pkg_not_found_msgs "$@"
+        if grep -qi 'not found in package names' <<< "$out_s"; then
+          print_pkg_not_found_msgs "${APKG_PRESENT_PKGS[@]}"
         else
           warn "Install failed."
         fi
@@ -567,15 +729,22 @@ cmd_install() {
       ;;
 
     alpine)
-      if ! apkg_confirm "Install packages: $* ?"; then
+      check_pkgs_exist_generic "$@"
+      if ((${#APKG_PRESENT_PKGS[@]} == 0)); then
+        warn "No valid packages to install (Alpine)."
         return 1
       fi
-      local out=""
-      if run_and_capture out ${SUDO} apk add --no-interactive "$@"; then
+      echo "apkg: Packages to install (Alpine):"
+      printf '  %s\n' "${APKG_PRESENT_PKGS[@]}"
+      if ! apkg_confirm "Install packages: ${APKG_PRESENT_PKGS[*]} ?"; then
+        return 1
+      fi
+      local out_a=""
+      if run_and_capture out_a ${SUDO} apk add --no-interactive "${APKG_PRESENT_PKGS[@]}"; then
         return 0
       else
-        if grep -qi 'not found' <<< "$out"; then
-          print_pkg_not_found_msgs "$@"
+        if grep -qi 'not found' <<< "$out_a"; then
+          print_pkg_not_found_msgs "${APKG_PRESENT_PKGS[@]}"
         else
           warn "Install failed."
         fi
@@ -584,15 +753,22 @@ cmd_install() {
       ;;
 
     void)
-      if ! apkg_confirm "Install packages: $* ?"; then
+      check_pkgs_exist_generic "$@"
+      if ((${#APKG_PRESENT_PKGS[@]} == 0)); then
+        warn "No valid packages to install (Void)."
         return 1
       fi
-      local out=""
-      if run_and_capture out ${SUDO} xbps-install -y "$@"; then
+      echo "apkg: Packages to install (Void):"
+      printf '  %s\n' "${APKG_PRESENT_PKGS[@]}"
+      if ! apkg_confirm "Install packages: ${APKG_PRESENT_PKGS[*]} ?"; then
+        return 1
+      fi
+      local out_v=""
+      if run_and_capture out_v ${SUDO} xbps-install -y "${APKG_PRESENT_PKGS[@]}"; then
         return 0
       else
-        if grep -qi 'not found in repository pool' <<< "$out"; then
-          print_pkg_not_found_msgs "$@"
+        if grep -qi 'not found in repository pool' <<< "$out_v"; then
+          print_pkg_not_found_msgs "${APKG_PRESENT_PKGS[@]}"
         else
           warn "Install failed."
         fi
@@ -601,14 +777,16 @@ cmd_install() {
       ;;
 
     gentoo)
+      echo "apkg: Packages to install (Gentoo):"
+      printf '  %s\n' "$@"
       if ! apkg_confirm "Install packages: $* ?"; then
         return 1
       fi
-      local out=""
-      if run_and_capture out ${SUDO} emerge "$@"; then
+      local out_g=""
+      if run_and_capture out_g ${SUDO} emerge "$@"; then
         return 0
       else
-        if grep -qi 'emerge: there are no ebuilds to satisfy' <<< "$out"; then
+        if grep -qi 'emerge: there are no ebuilds to satisfy' <<< "$out_g"; then
           print_pkg_not_found_msgs "$@"
         else
           warn "Install failed."
@@ -624,13 +802,15 @@ cmd_remove() {
   if [[ $# -eq 0 ]]; then
     die "You must specify at least one package to remove."
   fi
+  echo "apkg: Packages to remove:"
+  printf '  %s\n' "$@"
   if ! apkg_confirm "Remove packages: $* ?"; then
     return 1
   fi
 
   case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} remove -y "$@"
+    debian|debian_dpkg)
+      ${SUDO} ${PKG_MGR:-apt-get} remove -y "$@" || ${SUDO} dpkg -r "$@"
       ;;
     arch)
       ${SUDO} pacman -R --noconfirm "$@"
@@ -662,13 +842,19 @@ cmd_purge() {
   if [[ $# -eq 0 ]]; then
     die "You must specify at least one package to purge."
   fi
+  echo "apkg: Packages to purge:"
+  printf '  %s\n' "$@"
   if ! apkg_confirm "Purge packages (remove with configs): $* ?"; then
     return 1
   fi
 
   case "${PKG_MGR_FAMILY}" in
-    debian)
-      ${SUDO} ${PKG_MGR} purge -y "$@"
+    debian|debian_dpkg)
+      if command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1; then
+        ${SUDO} ${PKG_MGR:-apt-get} purge -y "$@"
+      else
+        ${SUDO} dpkg -P "$@"
+      fi
       ;;
     arch)
       ${SUDO} pacman -Rns --noconfirm "$@"
@@ -705,10 +891,13 @@ cmd_autoremove() {
     debian)
       ${SUDO} ${PKG_MGR} autoremove -y
       ;;
+    debian_dpkg)
+      warn "Autoremove not supported in dpkg-only mode."
+      ;;
     arch)
       local ORPHANS
       ORPHANS=$(pacman -Qdtq 2>/dev/null || true)
-      if [[ -n "${ORPHANS}" ]]; then
+      if [[ -n "${ORPHANS-}" ]]; then
         log "Removing orphaned packages:"
         printf '%s\n' "${ORPHANS}"
         ${SUDO} pacman -Rns --noconfirm ${ORPHANS}
@@ -744,6 +933,10 @@ cmd_search() {
     debian)
       apt-cache search "$@"
       ;;
+    debian_dpkg)
+      warn "Search via dpkg-only mode is limited."
+      dpkg -l | grep -i "$1" || true
+      ;;
     arch)
       pacman -Ss "$@"
       ;;
@@ -768,7 +961,7 @@ cmd_search() {
 cmd_list() {
   ensure_pkg_mgr
   case "${PKG_MGR_FAMILY}" in
-    debian)
+    debian|debian_dpkg)
       dpkg -l
       ;;
     arch)
@@ -815,12 +1008,15 @@ cmd_show() {
         return 1
       fi
       ;;
+    debian_dpkg)
+      dpkg -l "$@" || print_pkg_not_found_msgs "$@"
+      ;;
     arch)
-      local out=""
-      if run_and_capture out pacman -Si "$@"; then
+      local out_a=""
+      if run_and_capture out_a pacman -Si "$@"; then
         return 0
       else
-        if grep -qi 'target not found' <<< "$out"; then
+        if grep -qi 'target not found' <<< "$out_a"; then
           print_pkg_not_found_msgs "$@"
         else
           warn "Show failed."
@@ -829,11 +1025,11 @@ cmd_show() {
       fi
       ;;
     redhat)
-      local out=""
-      if run_and_capture out ${PKG_MGR} info "$@"; then
+      local out_r=""
+      if run_and_capture out_r ${PKG_MGR} info "$@"; then
         return 0
       else
-        if grep -qiE 'No matching Packages to list|Error: No matching Packages' <<< "$out"; then
+        if grep -qiE 'No matching Packages to list|Error: No matching Packages' <<< "$out_r"; then
           print_pkg_not_found_msgs "$@"
         else
           warn "Show failed."
@@ -842,11 +1038,11 @@ cmd_show() {
       fi
       ;;
     suse)
-      local out=""
-      if run_and_capture out zypper info "$@"; then
+      local out_s=""
+      if run_and_capture out_s zypper info "$@"; then
         return 0
       else
-        if grep -qi 'not found in package names' <<< "$out"; then
+        if grep -qi 'not found in package names' <<< "$out_s"; then
           print_pkg_not_found_msgs "$@"
         else
           warn "Show failed."
@@ -855,11 +1051,11 @@ cmd_show() {
       fi
       ;;
     alpine)
-      local out=""
-      if run_and_capture out apk info -a "$@"; then
+      local out_al=""
+      if run_and_capture out_al apk info -a "$@"; then
         return 0
       else
-        if grep -qi 'not found' <<< "$out"; then
+        if grep -qi 'not found' <<< "$out_al"; then
           print_pkg_not_found_msgs "$@"
         else
           warn "Show failed."
@@ -868,11 +1064,11 @@ cmd_show() {
       fi
       ;;
     void)
-      local out=""
-      if run_and_capture out xbps-query -RS "$@"; then
+      local out_v=""
+      if run_and_capture out_v xbps-query -RS "$@"; then
         return 0
       else
-        if grep -qi 'not found in repository pool' <<< "$out"; then
+        if grep -qi 'not found in repository pool' <<< "$out_v"; then
           print_pkg_not_found_msgs "$@"
         else
           warn "Show failed."
@@ -884,7 +1080,7 @@ cmd_show() {
       if command -v equery >/dev/null 2>&1; then
         equery meta "$@"
       else
-        warn "equery not found, show not implemented for Gentoo."
+        warn "equery not found, show not fully implemented for Gentoo."
       fi
       ;;
   esac
@@ -899,6 +1095,9 @@ cmd_clean() {
   case "${PKG_MGR_FAMILY}" in
     debian)
       ${SUDO} ${PKG_MGR} clean
+      ;;
+    debian_dpkg)
+      warn "No apt cache to clean in dpkg-only mode."
       ;;
     arch)
       ${SUDO} pacman -Scc --noconfirm
@@ -930,7 +1129,7 @@ cmd_clean() {
 cmd_repos_list() {
   ensure_pkg_mgr
   case "${PKG_MGR_FAMILY}" in
-    debian)
+    debian|debian_dpkg)
       echo "=== /etc/apt/sources.list ==="
       [[ -f /etc/apt/sources.list ]] && cat /etc/apt/sources.list || echo "Not found."
       echo
@@ -973,7 +1172,7 @@ cmd_add_repo() {
     die "Usage: apkg add-repo <repo-spec-or-url>"
   fi
   case "${PKG_MGR_FAMILY}" in
-    debian)
+    debian|debian_dpkg)
       if command -v add-apt-repository >/dev/null 2>&1; then
         ${SUDO} add-apt-repository "$@"
       else
@@ -1024,7 +1223,7 @@ cmd_remove_repo() {
   local pattern="$1"
 
   case "${PKG_MGR_FAMILY}" in
-    debian)
+    debian|debian_dpkg)
       warn "Will comment out lines matching '${pattern}' in /etc/apt/sources.list*."
       for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
         [[ -f "$f" ]] || continue
@@ -1069,6 +1268,9 @@ cmd_install_dev_kit() {
     debian)
       ${SUDO} ${PKG_MGR} update
       ${SUDO} ${PKG_MGR} install -y build-essential git curl wget pkg-config
+      ;;
+    debian_dpkg)
+      warn "dpkg-only mode: cannot pull dev tools from repos (no apt)."
       ;;
     arch)
       arch_install_with_yay base-devel git curl wget pkgconf
@@ -1190,7 +1392,6 @@ main() {
   local cmd="${1:-}"
   shift || true
 
-  # parse global flags (-y/--yes) for all commands
   parse_global_flags "$@"
   set -- "${APKG_ARGS[@]}"
 
@@ -1233,6 +1434,6 @@ main() {
       ;;
   esac
 }
-
+# ------------- script entry point -------------
 init_sudo
 main "$@"
