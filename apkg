@@ -157,57 +157,54 @@ usage() {
   GREEN='\033[0;32m'
   YELLOW='\033[0;33m'
   BLUE='\033[0;34m'
-  RED='\033[0;31m'
   RESET='\033[0m'
 
-  cat <<EOF
-${BOLD}${BLUE}[APKG]${RESET} Unified Package Manager Frontend
+  echo -e "${BOLD}${BLUE}[APKG]${RESET} Unified Package Manager Frontend\n"
 
-${BOLD}Usage:${RESET} ${GREEN}apkg [options] <command> [args]${RESET}
+  echo -e "${BOLD}Usage:${RESET} ${GREEN}apkg [options] <command> [args]${RESET}\n"
 
-${BOLD}Global options:${RESET}
-  ${YELLOW}-y, --yes${RESET}       Assume yes (or set ${YELLOW}APKG_ASSUME_YES=1${RESET})
+  echo -e "${BOLD}Global options:${RESET}"
+  echo -e "  ${YELLOW}-y, --yes${RESET}       Assume yes (or set ${YELLOW}APKG_ASSUME_YES=1${RESET})\n"
 
-${BOLD}Core commands:${RESET}
-  ${GREEN}update${RESET}            Update package database
-  ${GREEN}upgrade${RESET}           Upgrade packages
-  ${GREEN}full-upgrade${RESET}      Full system upgrade
-  ${GREEN}install PKG...${RESET}    Install package(s)
-  ${GREEN}remove PKG...${RESET}     Remove package(s)
-  ${GREEN}purge PKG...${RESET}      Remove packages + configs
-  ${GREEN}autoremove${RESET}        Remove orphan dependencies
-  ${GREEN}search PATTERN${RESET}    Search packages
-  ${GREEN}list${RESET}              List installed packages
-  ${GREEN}show PKG${RESET}          Show package info
-  ${GREEN}clean${RESET}             Clean cache
+  echo -e "${BOLD}Core commands:${RESET}"
+  echo -e "  ${GREEN}update${RESET}            Update package database"
+  echo -e "  ${GREEN}upgrade${RESET}           Upgrade packages"
+  echo -e "  ${GREEN}full-upgrade${RESET}      Full system upgrade"
+  echo -e "  ${GREEN}install PKG...${RESET}    Install package(s)"
+  echo -e "  ${GREEN}remove PKG...${RESET}     Remove package(s)"
+  echo -e "  ${GREEN}purge PKG...${RESET}      Remove packages + configs"
+  echo -e "  ${GREEN}autoremove${RESET}        Remove orphan dependencies"
+  echo -e "  ${GREEN}search PATTERN${RESET}    Search packages"
+  echo -e "  ${GREEN}list${RESET}              List installed packages"
+  echo -e "  ${GREEN}show PKG${RESET}          Show package info"
+  echo -e "  ${GREEN}clean${RESET}             Clean cache\n"
 
-${BOLD}Repos:${RESET}
-  ${GREEN}repos-list${RESET}        List repos
-  ${GREEN}add-repo ARGS...${RESET}  Add repo
-  ${GREEN}remove-repo PAT${RESET}   Remove/disable repo
+  echo -e "${BOLD}Repos:${RESET}"
+  echo -e "  ${GREEN}repos-list${RESET}        List repos"
+  echo -e "  ${GREEN}add-repo ARGS...${RESET}  Add repo"
+  echo -e "  ${GREEN}remove-repo PAT${RESET}   Remove/disable repo\n"
 
-${BOLD}System & Dev:${RESET}
-  ${GREEN}install-dev-kit${RESET}   Install dev tools
-  ${GREEN}fix-dns${RESET}           Fix DNS issues
-  ${GREEN}sys-info${RESET}          System info
-  ${GREEN}kernel${RESET}            Kernel version
-  ${GREEN}disk${RESET}              Disk usage
-  ${GREEN}mem${RESET}               Memory usage
-  ${GREEN}top${RESET}               htop/top
-  ${GREEN}ps${RESET}                Top processes
-  ${GREEN}ip${RESET}                Network info
+  echo -e "${BOLD}System & Dev:${RESET}"
+  echo -e "  ${GREEN}install-dev-kit${RESET}   Install dev tools"
+  echo -e "  ${GREEN}fix-dns${RESET}           Fix DNS issues"
+  echo -e "  ${GREEN}sys-info${RESET}          System info"
+  echo -e "  ${GREEN}kernel${RESET}            Kernel version"
+  echo -e "  ${GREEN}disk${RESET}              Disk usage"
+  echo -e "  ${GREEN}mem${RESET}               Memory usage"
+  echo -e "  ${GREEN}top${RESET}               htop/top"
+  echo -e "  ${GREEN}ps${RESET}                Top processes"
+  echo -e "  ${GREEN}ip${RESET}                Network info\n"
 
-${BOLD}General:${RESET}
-  ${GREEN}-v | --version${RESET}    Show version
-  ${GREEN}help${RESET}              Show this help
+  echo -e "${BOLD}General:${RESET}"
+  echo -e "  ${GREEN}-v | --version${RESET}    Show version"
+  echo -e "  ${GREEN}help${RESET}              Show this help\n"
 
-${BOLD}Env:${RESET}
-  ${YELLOW}APKG_SUDO=""${RESET}        Disable sudo/doas
-  ${YELLOW}APKG_SUDO="doas"${RESET}    Use doas
-  ${YELLOW}APKG_ASSUME_YES=1${RESET}   Assume yes
-
-EOF
+  echo -e "${BOLD}Env:${RESET}"
+  echo -e "  ${YELLOW}APKG_SUDO=\"\"${RESET}        Disable sudo/doas"
+  echo -e "  ${YELLOW}APKG_SUDO=\"doas\"${RESET}    Use doas"
+  echo -e "  ${YELLOW}APKG_ASSUME_YES=1${RESET}   Assume yes"
 }
+
 
 # ------------- helpers -------------
 
