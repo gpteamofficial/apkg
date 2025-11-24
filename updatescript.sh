@@ -20,11 +20,11 @@ CMD=""
 # ------------------ colors (TTY-safe) ------------------
 
 if [ -t 2 ] && [ "${NO_COLOR:-0}" = "0" ]; then
-  C_RESET='\033[0m'
-  C_INFO='\033[1;34m'
-  C_WARN='\033[1;33m'
-  C_ERR='\033[1;31m'
-  C_OK='\033[1;32m'
+  C_RESET="$(printf '\033[0m')"
+  C_INFO="$(printf '\033[1;34m')"  # blue
+  C_WARN="$(printf '\033[1;33m')"  # yellow
+  C_ERR="$(printf '\033[1;31m')"   # red
+  C_OK="$(printf '\033[1;32m')"    # green
 else
   C_RESET=''
   C_INFO=''
@@ -110,6 +110,7 @@ detect_pkg_mgr() {
 }
 
 ask_confirmation() {
+  # $1 = message, $2 = default (Y/N, optional, default N)
   msg=$1
   default=${2:-N}
 
@@ -564,6 +565,7 @@ main() {
     exit 0
   fi
 
+  # interactive menu (default behavior)
   show_menu
 
   if [ -t 0 ]; then
