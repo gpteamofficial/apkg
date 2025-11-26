@@ -115,7 +115,7 @@ ask_confirmation() {
   esac
 
   printf '%s[apkg-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
-  if ! read -r ans; then
+  if ! read -r ans </dev/tty; then
     return 1
   fi
 
