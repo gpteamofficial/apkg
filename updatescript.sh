@@ -133,7 +133,7 @@ ask_confirmation() {
   printf '%s[apkg-installer][PROMPT]%s %s %s ' "$C_WARN" "$C_RESET" "$msg" "$prompt" >&2
 
   if [ -t 0 ]; then
-    if ! read -r ans; then
+    if ! read -r ans </dev/tty; then
       return 1
     fi
   elif [ -r /dev/tty ]; then
