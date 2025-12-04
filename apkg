@@ -3,7 +3,6 @@
 # Supports: apt/apt-get, pacman(+yay/AUR), dnf, yum, zypper, apk (Alpine),
 #           xbps (Void), emerge (Gentoo)
 # NOTE: This script is intentionally conservative for safety.
-# LINUX ONLY. USE AT YOUR OWN RISK.
 # LICENSE: MIT
 set -euo pipefail
 
