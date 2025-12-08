@@ -8,7 +8,7 @@
 
 set -eu
 
-VOPK_URL="https://raw.githubusercontent.com/gpteamofficial/vopkg/main/vopk"
+VOPK_URL="https://raw.githubusercontent.com/gpteamofficial/vopk/main/vopk"
 VOPK_DEST="/usr/local/bin/vopk"
 
 PKG_MGR=""
