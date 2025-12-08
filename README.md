@@ -153,13 +153,13 @@ Environment flags such as `VMPKG_ASSUME_YES`, `VMPKG_DRY_RUN`, etc., are automat
 ### One‑liner installer (recommended)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/installscript.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh)
 ```
 
 ### Alternative installer (if process substitution is blocked)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/installscript.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh | sudo bash
 ```
 
 ---
@@ -169,7 +169,7 @@ curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/installscr
 Use the maintenance script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/updatescript.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/updatescript.sh | sudo bash
 ```
 
 From this menu you can:
