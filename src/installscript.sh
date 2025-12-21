@@ -89,6 +89,18 @@ detect_pkg_mgr() {
   elif command -v apk >/dev/null 2>&1; then
     PKG_MGR="apk"
     PKG_FAMILY="alpine"
+  elif command -v brew >/dev/null 2>&1; then
+    PKG_MGR="brew"
+    PKG_FAMILY="brew"
+  elif command -v pkg >/dev/null 2>&1; then
+    PKG_MGR="pkg"
+    PKG_FAMILY="freebsd"
+  elif command -v pkgin >/dev/null 2>&1; then
+    PKG_MGR="pkgin"
+    PKG_FAMILY="netbsd"
+  elif command -v pkg_add >/dev/null 2>&1; then
+    PKG_MGR="pkg_add"
+    PKG_FAMILY="openbsd"
   else
     PKG_MGR=""
     PKG_FAMILY=""
@@ -159,7 +171,7 @@ install_curl_if_needed() {
   detect_pkg_mgr
 
   if [ -z "$PKG_MGR" ]; then
-    fail "No supported package manager found to install curl (pacman/apt/dnf/yum/zypper/apk). Install curl or wget manually and rerun."
+    fail "No supported package manager found to install curl (pacman/apt/dnf/yum/zypper/apk/brew/pkg/pkg_add/pkgin). Install curl or wget manually and rerun."
   fi
 
   log "Neither curl nor wget found. Installing curl using ${PKG_MGR}..."
@@ -188,6 +200,21 @@ install_curl_if_needed() {
     alpine)
       apk update || true
       apk add --no-cache curl
+      ;;
+    brew)
+      brew update || true
+      brew install curl
+      ;;
+    freebsd)
+      pkg update -y || true
+      pkg install -y curl
+      ;;
+    netbsd)
+      pkgin -y update || true
+      pkgin -y install curl
+      ;;
+    openbsd)
+      pkg_add curl || true
       ;;
     *)
       fail "Unsupported package manager family '${PKG_FAMILY}' for installing curl."

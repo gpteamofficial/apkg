@@ -132,17 +132,13 @@ vopk vmpkg list
 ---
 
 ## 🏗 التثبيت
-### سكربت التثبيت (موصى به) (يتطلب تشغيله كـroot)
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh)
-```
-
-### التحميل بدون root
+### سكربت التثبيت (موصى به) — يعمل على أي توزيعة / macOS / BSD
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh | sudo bash -s -- -y
 ```
+
+> ملاحظة: السكربت يكتشف مدير الحزم المناسب (apt / pacman / dnf / zypper / apk / xbps / emerge / brew / pkg / pkg_add / pkgin) ويثبت curl إن لم يكن موجودًا.
 
 ---
 
