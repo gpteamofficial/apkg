@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #!/usr/bin/env bash
 # VOPK Bootstrap Installer
 # Usage:
@@ -88,3 +89,6 @@ main() {
 }
 
 main "$@"
+=======
+vopk_tmp="$(mktemp)"; curl -fsSL https://raw.githubusercontent.com/gpteamofficial/vopk/main/src/installscript.sh -o "$vopk_tmp" && chmod +x "$vopk_tmp" && sudo -E "$vopk_tmp"; rm -f "$vopk_tmp"
+>>>>>>> 21151aa (Major Update: 2.0.0 Xia)
